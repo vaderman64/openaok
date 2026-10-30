@@ -50,6 +50,7 @@ struct State {
     float x = -1.0f;   // the pointer, window pixels; below zero until placed
     float y = -1.0f;
     Uint64 last = 0;   // SDL's performance counter at the last Update
+    bool zl = false;   // ZL held: the right stick zooms instead of scrolling
 };
 State g;
 
@@ -131,6 +132,7 @@ bool Handle(const SDL_Event& event) {
     // Shift is held as long as ZL is; every other key is pressed and let go
     // as its button goes down.
     if (key == SDL_SCANCODE_LSHIFT) {
+        g.zl = down;
         Key(key, down);
     } else if (down) {
         Key(key, true);
@@ -176,7 +178,14 @@ void Update() {
 void Scroll(float& x, float& y) {
     x = 0.0f;
     y = 0.0f;
-    if (g.enabled) Lean(2, 3, x, y);
+    if (g.enabled && !g.zl) Lean(2, 3, x, y);
+}
+
+void Zoom(float& z) {
+    z = 0.0f;
+    if (!g.enabled || !g.zl) return;
+    float x = 0.0f;
+    Lean(2, 3, x, z);
 }
 
 void Rumble() {

@@ -40,6 +40,10 @@ void Update();
 // as it does under the arrow keys.
 void Scroll(float& x, float& y);
 
+// With ZL held, the right stick's up-down lean, -1 (up, zoom in) to 1 (down,
+// zoom out); 0 otherwise. Scroll gives nothing while ZL is held.
+void Zoom(float& z);
+
 // A short buzz of the controller.
 void Rumble();
 

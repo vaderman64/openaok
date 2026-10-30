@@ -888,6 +888,22 @@ void InputManager::Update(Rendering::Renderer& renderer, float dt_seconds, int w
     cx += stick_x * pan_speed;
     cy += stick_y * pan_speed;
 
+    // ZL and the right stick zoom, about the middle of the screen: up nearer,
+    // down further out.
+    float stick_zoom = 0.0f;
+    HAL::Pad::Zoom(stick_zoom);
+    if (stick_zoom != 0.0f) {
+        constexpr float kMinZoom = 0.5f, kMaxZoom = 2.0f, kZoomRate = 1.5f;
+        const float old_zoom = renderer.target_camera_zoom;
+        const float new_zoom = std::clamp(old_zoom * std::exp(-stick_zoom * kZoomRate * dt_seconds),
+                                          kMinZoom, kMaxZoom);
+        const float mid_x = cx + win_w / 2.0f / old_zoom;
+        const float mid_y = cy + win_h / 2.0f / old_zoom;
+        renderer.target_camera_zoom = new_zoom;
+        cx = mid_x - win_w / 2.0f / new_zoom;
+        cy = mid_y - win_h / 2.0f / new_zoom;
+    }
+
     if (pan_left) cx -= pan_speed;
     if (pan_right) cx += pan_speed;
     if (pan_up) cy -= pan_speed;
