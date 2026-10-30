@@ -893,7 +893,7 @@ void InputManager::Update(Rendering::Renderer& renderer, float dt_seconds, int w
     float stick_zoom = 0.0f;
     HAL::Pad::Zoom(stick_zoom);
     if (stick_zoom != 0.0f) {
-        constexpr float kMinZoom = 0.5f, kMaxZoom = 2.0f, kZoomRate = 1.5f;
+        constexpr float kMinZoom = 0.6f, kMaxZoom = 2.0f, kZoomRate = 1.5f;
         const float old_zoom = renderer.target_camera_zoom;
         const float new_zoom = std::clamp(old_zoom * std::exp(-stick_zoom * kZoomRate * dt_seconds),
                                           kMinZoom, kMaxZoom);
@@ -902,6 +902,15 @@ void InputManager::Update(Rendering::Renderer& renderer, float dt_seconds, int w
         renderer.target_camera_zoom = new_zoom;
         cx = mid_x - win_w / 2.0f / new_zoom;
         cy = mid_y - win_h / 2.0f / new_zoom;
+    } else if (renderer.target_camera_zoom != 1.0f &&
+               std::fabs(renderer.target_camera_zoom - 1.0f) < 0.05f) {
+        // Let go near 1:1, the view settles on it exactly, pixel for pixel.
+        const float old_zoom = renderer.target_camera_zoom;
+        const float mid_x = cx + win_w / 2.0f / old_zoom;
+        const float mid_y = cy + win_h / 2.0f / old_zoom;
+        renderer.target_camera_zoom = 1.0f;
+        cx = mid_x - win_w / 2.0f;
+        cy = mid_y - win_h / 2.0f;
     }
 
     if (pan_left) cx -= pan_speed;
@@ -919,6 +928,9 @@ void InputManager::Update(Rendering::Renderer& renderer, float dt_seconds, int w
     renderer.camera_x += (renderer.target_camera_x - renderer.camera_x) * blend;
     renderer.camera_y += (renderer.target_camera_y - renderer.camera_y) * blend;
     renderer.camera_zoom += (renderer.target_camera_zoom - renderer.camera_zoom) * blend;
+    if (std::fabs(renderer.target_camera_zoom - renderer.camera_zoom) < 0.001f) {
+        renderer.camera_zoom = renderer.target_camera_zoom;
+    }
 }
 
 void InputManager::RunCommand(ECS::Simulation& sim, const Rendering::UIRenderer::Command& cmd,

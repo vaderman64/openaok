@@ -17,8 +17,39 @@
 #include <cstdlib>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 namespace Rendering {
+
+namespace {
+
+// Away from 1:1 the world is drawn at 1:1 into this texture, sized to the area
+// the zoomed view shows, and the texture is then stretched over the view. The
+// world's own passes (terrain, fog, shadows, outlines) then never draw at a
+// fractional render scale.
+SDL_Texture* g_zoomed = nullptr;
+int g_zoomed_w = 0;
+int g_zoomed_h = 0;
+
+SDL_Texture* ZoomedTarget(SDL_Renderer* sdl_r, int w, int h) {
+    if (g_zoomed != nullptr && g_zoomed_w >= w && g_zoomed_h >= h) return g_zoomed;
+    if (g_zoomed != nullptr) SDL_DestroyTexture(g_zoomed);
+    // Grown with headroom, so zooming out step by step does not remake it
+    // every frame.
+    g_zoomed_w = std::max(w, g_zoomed_w + g_zoomed_w / 4);
+    g_zoomed_h = std::max(h, g_zoomed_h + g_zoomed_h / 4);
+    g_zoomed = SDL_CreateTexture(sdl_r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+                                 g_zoomed_w, g_zoomed_h);
+    if (g_zoomed == nullptr) {
+        g_zoomed_w = g_zoomed_h = 0;
+        return nullptr;
+    }
+    SDL_SetTextureBlendMode(g_zoomed, SDL_BLENDMODE_NONE);
+    SDL_SetTextureScaleMode(g_zoomed, SDL_ScaleModeLinear);
+    return g_zoomed;
+}
+
+} // namespace
 
 bool Renderer::Init(HAL::Window& window) {
     std::cout << "[Renderer] Initialized." << std::endl;
@@ -99,7 +130,29 @@ void Renderer::Render(ECS::Simulation& sim, HAL::Window& window, float alpha) {
     
     window.BeginFrame();
     window.Clear(0, 0, 0);   // black beyond the map's edge
-    
+
+    // Zoomed: the world goes to its own texture at 1:1 (g_zoomed above).
+    const float zoom = camera_zoom;
+    const float full_w = view_w;
+    const float full_h = view_h;
+    SDL_Texture* frame_target = SDL_GetRenderTarget(sdl_r);
+    SDL_Texture* zoomed = nullptr;
+    int zoomed_w = 0;
+    int zoomed_h = 0;
+    if (std::fabs(zoom - 1.0f) > 0.001f) {
+        zoomed_w = static_cast<int>(std::ceil(full_w / zoom));
+        zoomed_h = static_cast<int>(std::ceil(full_h / zoom));
+        zoomed = ZoomedTarget(sdl_r, zoomed_w, zoomed_h);
+    }
+    if (zoomed != nullptr) {
+        SDL_SetRenderTarget(sdl_r, zoomed);
+        SDL_RenderSetScale(sdl_r, 1.0f, 1.0f);
+        SDL_SetRenderDrawColor(sdl_r, 0, 0, 0, 255);
+        SDL_RenderClear(sdl_r);
+        view_w = static_cast<float>(zoomed_w);
+        view_h = static_cast<float>(zoomed_h);
+        camera_zoom = 1.0f;
+    }
     SDL_RenderSetScale(sdl_r, camera_zoom, camera_zoom);
     
     using Clock = std::chrono::steady_clock;
@@ -142,6 +195,17 @@ void Renderer::Render(ECS::Simulation& sim, HAL::Window& window, float alpha) {
         }
     }
     
+    if (zoomed != nullptr) {
+        camera_zoom = zoom;
+        view_w = full_w;
+        view_h = full_h;
+        SDL_SetRenderTarget(sdl_r, frame_target);
+        SDL_RenderSetScale(sdl_r, 1.0f, 1.0f);
+        const SDL_Rect src{0, 0, zoomed_w, zoomed_h};
+        const SDL_FRect dst{0.0f, 0.0f, zoomed_w * zoom, zoomed_h * zoom};
+        SDL_RenderCopyF(sdl_r, zoomed, &src, &dst);
+    }
+
     SDL_RenderSetScale(sdl_r, 1.0f, 1.0f);
     Messages::Draw(sdl_r, win_w, win_h);
     UIRenderer::DrawTimePanels(sim, sdl_r, win_w, win_h);
